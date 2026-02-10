@@ -3,7 +3,8 @@ import CameraCapture from "./components/CameraCapture";
 import RegistrationForm from "./components/RegistrationForm";
 
 export default function App() {
-  const [extractedData, setExtractedData] = useState({});
+  const [extractedData, setExtractedData] = useState<any>({});
+
 
   return (
     <main className="bg-gray-50 min-h-screen w-full flex flex-col items-center p-4 sm:p-8 font-sans">

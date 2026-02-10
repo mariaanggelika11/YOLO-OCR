@@ -10,6 +10,7 @@ interface FormData {
   nationality: string;
   passportNumber: string;
   licenseNumber: string;
+  faceImage?: string; // base64 string of the cropped face image
 }
 
 interface RegistrationFormProps {
@@ -82,6 +83,20 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ initialData }) => {
         <div className="bg-indigo-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">2</div>
         Extracted Information
       </h2>
+      {form.faceImage && (
+        <div className="flex justify-center mb-4">
+          <div className="relative">
+            <img
+              src={`data:image/jpeg;base64,${form.faceImage}`}
+              alt="Face Preview"
+              className="w-24 h-32 object-cover rounded-lg border shadow"
+            />
+            <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-xs bg-indigo-600 text-white px-2 py-0.5 rounded">
+              Auto
+            </span>
+          </div>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* First + Last Name */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

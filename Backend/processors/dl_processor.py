@@ -2,6 +2,7 @@ import re
 import pytesseract
 import numpy as np
 from datetime import datetime
+from processors.face_extractor import crop_face_by_state, face_to_base64
 
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
@@ -179,5 +180,27 @@ def process_driving_license(image_rgb, model, reader, conf=0.35, iou=0.45):
     dbg("PROCESS_RESULT", data)
 
     dbg("MISSING_FIELDS", [k for k,v in data.items() if not v])
+
+    # =========================
+    # FACE EXTRACTION (GENERAL)
+    # =========================
+    try:
+        state = data.get("StateName")  # bisa None / ""
+
+        face_img = crop_face_by_state(image_rgb, state)
+        face_b64 = face_to_base64(face_img)
+
+        data["faceImage"] = face_b64
+
+        dbg("FACE_EXTRACTED", {
+            "state": state or "GENERAL",
+            "face_size": face_img.size
+        })
+
+    except Exception as e:
+        dbg("FACE_EXTRACT_FAIL", str(e))
+        data["faceImage"] = ""
+
+    return data
 
     return data

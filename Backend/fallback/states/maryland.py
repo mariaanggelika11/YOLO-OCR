@@ -114,27 +114,37 @@ def apply(image_rgb, reader, data):
     if not data.get("firstName") or not data.get("lastName"):
         candidates = []
 
-        for l in lines:
-            t = l.strip().upper()
-            if not t.isalpha():
-                continue
-            if len(t) <= 2:
-                continue
-            if t in NAME_BLACKLIST:
-                continue
-            if t in VALID_STATES:
-                continue
-            candidates.append(t)
+    for l in lines:
+        t = l.strip().upper()
 
-        dbg("NAME_CANDIDATES", candidates)
+        if not t.isalpha():
+            continue
+        if len(t) < 3:
+            continue
+        if t in VALID_STATES:
+            continue
+        if t in NAME_BLACKLIST:
+            continue
+        if not t.isupper():
+            continue
 
-        if len(candidates) >= 2:
-            if not data.get("lastName"):
-                data["lastName"] = candidates[0]
-                dbg("LASTNAME_SET", data["lastName"])
-            if not data.get("firstName"):
-                data["firstName"] = candidates[1]
-                dbg("FIRSTNAME_SET", data["firstName"])
+        candidates.append(t)
+
+    dbg("NAME_CANDIDATES_FILTERED", candidates)
+
+    # LAST NAME = kata ALL CAPS pertama
+    if candidates and not data.get("lastName"):
+        data["lastName"] = candidates[0]
+        dbg("LASTNAME_SET", data["lastName"])
+
+    # FIRST NAME
+    if not data.get("firstName"):
+        if "FNU" in candidates:
+            data["firstName"] = "FNU"
+            dbg("FIRSTNAME_SET", "FNU")
+        elif len(candidates) > 1:
+            data["firstName"] = candidates[1]
+            dbg("FIRSTNAME_SET", data["firstName"])
 
     dbg("FALLBACK_RESULT", data)
     return data

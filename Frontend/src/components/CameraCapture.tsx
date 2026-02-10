@@ -14,6 +14,7 @@ interface ExtractedData {
   nationality: string;
   passportNumber: string;
   licenseNumber: string;
+  faceImage?: string; // base64 string of the cropped face image
 }
 
 interface CameraCaptureProps {
@@ -180,6 +181,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
           nationality: parsed.StateName || parsed.nationality || "",
           passportNumber: parsed.passportNumber || "",
           licenseNumber: parsed.licenseNumber || "",
+          faceImage: parsed.faceImage || "", // base64 string of the cropped face image
         });
 
         setCaptured(true);
@@ -210,6 +212,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
       nationality: "",
       passportNumber: "",
       licenseNumber: "",
+      faceImage: "",
     });
 
     setCaptured(false);
