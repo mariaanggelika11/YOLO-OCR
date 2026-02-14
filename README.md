@@ -120,8 +120,14 @@ At the moment, this project still uses a hardcoded Tesseract path for local deve
 
 
 -Progressive Web App (PWA) Support
-RUN BACKEND
--uvicorn main:app --host 0.0.0.0 --port 8000
-RUN FRONTEND
--npm run build
--npm run preview -- --host
+Run Backend
+uvicorn main:app --host 0.0.0.0 --port 8000
+
+Run Frontend
+npm run build
+npm run preview -- --host
+
+Run ngrok
+ngrok http 4173
+
+Open the ngrok HTTPS URL on your mobile device
