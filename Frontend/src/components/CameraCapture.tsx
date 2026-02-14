@@ -2,6 +2,9 @@ import React, { useState, useRef, Suspense } from "react";
 import { type Crop, type PixelCrop } from "react-image-crop";
 import { Camera, Upload, CheckCircle, RefreshCw, Loader, AlertCircle } from "lucide-react";
 
+const API_BASE_URL = import.meta.env.VITE_API_URL ||
+  `${window.location.protocol}//${window.location.hostname}:8000`;
+
 // Lazy load ReactCrop
 const ReactCrop = React.lazy(() => import("react-image-crop"));
 
@@ -150,10 +153,11 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
       const formData = new FormData();
       formData.append("file", croppedFile);
 
-      const res = await fetch("http://127.0.0.1:8000/detect", {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch(`${API_BASE_URL}/detect`, {
+      method: "POST",
+      body: formData,
+    });
+
 
       if (!res.ok) throw new Error(`Server merespon dengan status: ${res.status}`);
 

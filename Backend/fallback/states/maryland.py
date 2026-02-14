@@ -121,7 +121,7 @@ def apply(image_rgb, reader, data):
             continue
         if len(t) < 3:
             continue
-        if t in VALID_STATES:
+        if any(state in t for state in VALID_STATES):
             continue
         if t in NAME_BLACKLIST:
             continue

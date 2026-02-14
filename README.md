@@ -117,3 +117,11 @@ YOLO-OCR/
 └── README.md
 
 At the moment, this project still uses a hardcoded Tesseract path for local development on Windows: pytesseract.pytesseract.tesseract_cmd = "C:\\Program Files\\Tesseract-OCR\\tesseract.exe" This setup is temporary and only intended for local testing.
+
+
+-Progressive Web App (PWA) Support
+RUN BACKEND
+-uvicorn main:app --host 0.0.0.0 --port 8000
+RUN FRONTEND
+-npm run build
+-npm run preview -- --host
