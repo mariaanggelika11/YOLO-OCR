@@ -73,7 +73,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ initialData }) => {
   const errorText = (fieldName: keyof FormData) =>
     errors[fieldName] && (
       <p className="flex items-center gap-1 text-xs text-red-600 mt-1">
-        <AlertCircle size={14} /> Data ini perlu diisi atau diperbaiki.
+        <AlertCircle size={14} /> This data needs to be filled in or corrected.
       </p>
     );
 

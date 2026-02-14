@@ -45,7 +45,15 @@ STATE_FACE_TEMPLATE = {
         "y1": 0.17,
         "x2": 0.34,
         "y2": 0.65
-    }
+    },
+
+        "PENNSYLVANIA": {
+        "x1": 0.03,   # sangat kiri
+        "y1": 0.25,   # sedikit lebih atas
+        "x2": 0.32,   # cukup lebar
+        "y2": 0.72    # bawah foto
+    },
+
 }
 
 # =========================

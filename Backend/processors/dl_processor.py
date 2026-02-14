@@ -203,4 +203,3 @@ def process_driving_license(image_rgb, model, reader, conf=0.35, iou=0.45):
 
     return data
 
-    return data

@@ -111,40 +111,36 @@ def apply(image_rgb, reader, data):
                 break
 
     # NAME
+    candidates = []
+
     if not data.get("firstName") or not data.get("lastName"):
-        candidates = []
+        for l in lines:
+            t = l.strip().upper()
 
-    for l in lines:
-        t = l.strip().upper()
+            if not t.isalpha():
+                continue
+            if len(t) < 3:
+                continue
+            if any(state in t for state in VALID_STATES):
+                continue
+            if t in NAME_BLACKLIST:
+                continue
+            if not t.isupper():
+                continue
 
-        if not t.isalpha():
-            continue
-        if len(t) < 3:
-            continue
-        if any(state in t for state in VALID_STATES):
-            continue
-        if t in NAME_BLACKLIST:
-            continue
-        if not t.isupper():
-            continue
+            candidates.append(t)
 
-        candidates.append(t)
+        dbg("NAME_CANDIDATES_FILTERED", candidates)
 
-    dbg("NAME_CANDIDATES_FILTERED", candidates)
+        if candidates and not data.get("lastName"):
+            data["lastName"] = candidates[0]
 
-    # LAST NAME = kata ALL CAPS pertama
-    if candidates and not data.get("lastName"):
-        data["lastName"] = candidates[0]
-        dbg("LASTNAME_SET", data["lastName"])
+        if not data.get("firstName"):
+            if "FNU" in candidates:
+                data["firstName"] = "FNU"
+            elif len(candidates) > 1:
+                data["firstName"] = candidates[1]
 
-    # FIRST NAME
-    if not data.get("firstName"):
-        if "FNU" in candidates:
-            data["firstName"] = "FNU"
-            dbg("FIRSTNAME_SET", "FNU")
-        elif len(candidates) > 1:
-            data["firstName"] = candidates[1]
-            dbg("FIRSTNAME_SET", data["firstName"])
 
     dbg("FALLBACK_RESULT", data)
     return data
