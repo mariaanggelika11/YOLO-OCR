@@ -164,11 +164,45 @@ def process_driving_license(image_rgb, model, reader, conf=0.35, iou=0.45):
 
         elif cls == "dateOfBirth":
             d = clean_date(txt)
-            if d:
-                data["dateOfBirth"] = d
-                dbg("FIELD_SET", {"dateOfBirth": d})
-            else:
+
+            if not d:
                 dbg("FIELD_FAIL", "dateOfBirth")
+                continue
+
+            try:
+                day, month, year = map(int, d.split("/"))
+            except Exception:
+                dbg("DOB_PARSE_FAIL", d)
+                continue
+
+            # ===============================
+            # Jika belum ada DOB → set langsung
+            # ===============================
+            if not data["dateOfBirth"]:
+                data["dateOfBirth"] = d
+                dbg("DOB_FIRST_SET", d)
+
+            else:
+                # ===============================
+                # Bandingkan tahun → pilih yang lebih tua
+                # ===============================
+                old_day, old_month, old_year = map(
+                    int, data["dateOfBirth"].split("/")
+                )
+
+                # DOB seharusnya lebih tua (tahun lebih kecil)
+                if year < old_year:
+                    dbg("DOB_REPLACED", {
+                        "old": data["dateOfBirth"],
+                        "new": d
+                    })
+                    data["dateOfBirth"] = d
+                else:
+                    dbg("DOB_SKIP_AS_EXP", {
+                        "existing": data["dateOfBirth"],
+                        "candidate": d
+                    })
+
             continue
 
         if not data[cls]:
