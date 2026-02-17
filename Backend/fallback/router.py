@@ -13,54 +13,66 @@ def apply_fallback(image_rgb, reader, data):
 
     state = data.get("StateName", "").strip().upper()
 
+    state_handled = False  # FLAG
+
     # =========================
     # ENRICH (SELALU DIJALANKAN)
     # =========================
     if state == "WEST VIRGINIA":
         data = westvirginia.enrich(data)
+        state_handled = True
 
     elif state == "VIRGINIA":
         data = virginia.enrich(data)
+        state_handled = True
 
     elif state == "MARYLAND":
         data = maryland.enrich(data)
+        state_handled = True
 
     elif state == "NEW YORK":
         data = newyork.enrich(data)
+        state_handled = True
 
     elif state == "PENNSYLVANIA":
         data = pennsylvania.enrich(data)
+        state_handled = True
 
     elif state == "DELAWARE":
         data = delaware.enrich(data)
+        state_handled = True
 
     # =========================
     # STATE FALLBACK (ONLY IF FIELD EMPTY)
     # =========================
-    has_missing = any(v == "" for v in data.values())
+    if state_handled:
+        has_missing = any(v == "" for v in data.values())
 
-    if has_missing:
+        if has_missing:
 
-        if state == "WEST VIRGINIA":
-            data = westvirginia.apply(image_rgb, reader, data)
+            if state == "WEST VIRGINIA":
+                data = westvirginia.apply(image_rgb, reader, data)
 
-        elif state == "VIRGINIA":
-            data = virginia.apply(image_rgb, reader, data)
+            elif state == "VIRGINIA":
+                data = virginia.apply(image_rgb, reader, data)
 
-        elif state == "MARYLAND":
-            data = maryland.apply(image_rgb, reader, data)
+            elif state == "MARYLAND":
+                data = maryland.apply(image_rgb, reader, data)
 
-        elif state == "NEW YORK":
-            data = newyork.apply(image_rgb, reader, data)
+            elif state == "NEW YORK":
+                data = newyork.apply(image_rgb, reader, data)
 
-        elif state == "PENNSYLVANIA":
-            data = pennsylvania.apply(image_rgb, reader, data)
+            elif state == "PENNSYLVANIA":
+                data = pennsylvania.apply(image_rgb, reader, data)
 
-        elif state == "DELAWARE":
-            data = delaware.apply(image_rgb, reader, data)
+            elif state == "DELAWARE":
+                data = delaware.apply(image_rgb, reader, data)
+
+        # ❗ LANGSUNG RETURN — JANGAN KE GENERAL
+        return data
 
     # =========================
-    # GENERAL FALLBACK (LAST DEFENSE)
+    # GENERAL FALLBACK (ONLY IF STATE TIDAK DIKENAL)
     # =========================
     if any(v == "" for v in data.values()):
         data = general.apply(image_rgb, reader, data)

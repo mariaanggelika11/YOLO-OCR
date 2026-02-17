@@ -123,13 +123,7 @@ def process_driving_license(image_rgb, model, reader, conf=0.35, iou=0.45):
     for idx, box in enumerate(boxes):
         cls = names[int(box.cls.item())]
 
-        dbg("YOLO_BOX_START", {
-            "index": idx,
-            "class": cls
-        })
-
         if cls not in data:
-            dbg("SKIP_CLASS_NOT_USED", cls)
             continue
 
         x1, y1, x2, y2 = box.xyxy.cpu().numpy().astype(int).reshape(-1)
@@ -141,17 +135,10 @@ def process_driving_license(image_rgb, model, reader, conf=0.35, iou=0.45):
         crop = image_rgb[y1:y2, x1:x2]
 
         if crop.size == 0:
-            dbg("EMPTY_CROP", cls)
             continue
 
         raw = read_text(crop, reader)
         txt = re.sub(r"[^A-Za-z0-9\s/]", "", raw).strip()
-
-        dbg("OCR_FINAL_TEXT", {
-            "class": cls,
-            "raw": raw,
-            "clean": txt
-        })
 
         if not txt:
             continue
@@ -179,21 +166,19 @@ def process_driving_license(image_rgb, model, reader, conf=0.35, iou=0.45):
         if not data[cls]:
             data[cls] = txt.upper()
 
-    dbg("PROCESS_RESULT", data)
-
     # =========================
-    # FACE EXTRACTION (HAAR)
+    # FACE EXTRACTION (NO DEBUG)
     # =========================
     try:
         face_img = detect_and_crop_face(image_rgb)
-
         if face_img:
             data["faceImage"] = face_to_base64(face_img)
-            dbg("FACE_EXTRACTED", {"face_size": face_img.size})
-        else:
-            dbg("FACE_NOT_FOUND")
+    except:
+        pass
 
-    except Exception as e:
-        dbg("FACE_EXTRACT_FAIL", str(e))
+    # Debug result TANPA base64
+    safe_result = data.copy()
+    safe_result["faceImage"] = "[HIDDEN]"
+    dbg("PROCESS_RESULT", safe_result)
 
     return data

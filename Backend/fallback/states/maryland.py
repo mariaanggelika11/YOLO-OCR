@@ -7,12 +7,25 @@ DEBUG = True
 def dbg(tag, payload=None):
     if not DEBUG:
         return
+
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"\n[MD_STATE {ts}] {tag}")
+
     if payload is not None:
-        if isinstance(payload, (list, dict)):
+        if isinstance(payload, dict):
+            import json
+            safe = payload.copy()
+
+            # 🔥 sembunyikan base64
+            if "faceImage" in safe:
+                safe["faceImage"] = "[HIDDEN]"
+
+            print(json.dumps(safe, indent=2))
+
+        elif isinstance(payload, list):
             import json
             print(json.dumps(payload, indent=2))
+
         else:
             print(payload)
 
@@ -115,20 +128,27 @@ def apply(image_rgb, reader, data):
 
     if not data.get("firstName") or not data.get("lastName"):
         for l in lines:
-            t = l.strip().upper()
+            original = l.strip()
 
-            if not t.isalpha():
-                continue
-            if len(t) < 3:
-                continue
-            if any(state in t for state in VALID_STATES):
-                continue
-            if t in NAME_BLACKLIST:
-                continue
-            if not t.isupper():
+            # 🔥 hanya ambil jika memang dari OCR sudah FULL UPPERCASE
+            if original != original.upper():
                 continue
 
-            candidates.append(t)
+            # hanya huruf dan spasi
+            if not re.fullmatch(r"[A-Z ]+", original):
+                continue
+
+            # minimal 2 kata
+            if len(original.split()) < 2:
+                continue
+
+            if any(state in original for state in VALID_STATES):
+                continue
+
+            if original in NAME_BLACKLIST:
+                continue
+
+            candidates.append(original)
 
         dbg("NAME_CANDIDATES_FILTERED", candidates)
 
@@ -136,11 +156,8 @@ def apply(image_rgb, reader, data):
             data["lastName"] = candidates[0]
 
         if not data.get("firstName"):
-            if "FNU" in candidates:
-                data["firstName"] = "FNU"
-            elif len(candidates) > 1:
+            if len(candidates) > 1:
                 data["firstName"] = candidates[1]
 
-
-    dbg("FALLBACK_RESULT", data)
+        dbg("FALLBACK_RESULT", data)
     return data
