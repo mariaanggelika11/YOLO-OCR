@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Camera, Upload, Loader, ScanLine } from "lucide-react";
+import { Camera, Upload, Loader } from "lucide-react";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
@@ -9,7 +9,7 @@ interface ExtractedData {
   firstName: string;
   lastName: string;
   address: string;
-  dateOfBirth: string;  // ganti dari dob
+  dob: string;
   sex: string;
   nationality: string;
   passportNumber: string;
@@ -17,22 +17,23 @@ interface ExtractedData {
   faceImage?: string;
 }
 
-
-interface Props {
+interface CameraCaptureProps {
   onExtractedData: (data: Partial<ExtractedData>) => void;
 }
 
-const CameraCapture: React.FC<Props> = ({ onExtractedData }) => {
+const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
 
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // ================= START CAMERA =================
+  // =========================
+  // START CAMERA
+  // =========================
   const startCamera = async () => {
     setError("");
 
@@ -47,71 +48,94 @@ const CameraCapture: React.FC<Props> = ({ onExtractedData }) => {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
         setIsCameraOn(true);
       }
     } catch {
-      setError("Camera permission denied or unavailable");
+      setError("Cannot access camera");
     }
   };
 
-  // ================= STOP CAMERA =================
   const stopCamera = () => {
-    const stream = videoRef.current?.srcObject as MediaStream;
-    if (stream) stream.getTracks().forEach((t) => t.stop());
+    if (videoRef.current?.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach((track) => track.stop());
+    }
     setIsCameraOn(false);
   };
 
-  // ================= CAPTURE FULL IMAGE =================
+  // =========================
+  // CAPTURE (CROP SESUAI FRAME)
+  // =========================
   const capturePhoto = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    const frame = frameRef.current;
 
-    const width = video.videoWidth;
-    const height = video.videoHeight;
+    if (!video || !canvas || !frame) return;
 
-    canvas.width = width;
-    canvas.height = height;
+    const videoRect = video.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+
+    const scaleX = video.videoWidth / videoRect.width;
+    const scaleY = video.videoHeight / videoRect.height;
+
+    const cropX = (frameRect.left - videoRect.left) * scaleX;
+    const cropY = (frameRect.top - videoRect.top) * scaleY;
+    const cropWidth = frameRect.width * scaleX;
+    const cropHeight = frameRect.height * scaleY;
+
+    canvas.width = cropWidth;
+    canvas.height = cropHeight;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // FULL FRAME — tidak crop
-    ctx.drawImage(video, 0, 0, width, height);
-
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        setCapturedBlob(blob);
-        setPreviewImage(URL.createObjectURL(blob));
-      },
-      "image/jpeg",
-      0.95
+    ctx.drawImage(
+      video,
+      cropX,
+      cropY,
+      cropWidth,
+      cropHeight,
+      0,
+      0,
+      cropWidth,
+      cropHeight
     );
 
+    const cropped = canvas.toDataURL("image/jpeg", 1);
+
+    setPreviewImage(cropped);
     stopCamera();
   };
 
-  // ================= UPLOAD =================
+  // =========================
+  // UPLOAD
+  // =========================
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError("");
     if (!e.target.files?.length) return;
-    const file = e.target.files[0];
-    setCapturedBlob(file);
-    setPreviewImage(URL.createObjectURL(file));
-    stopCamera();
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPreviewImage(reader.result as string);
+    };
+    reader.readAsDataURL(e.target.files[0]);
   };
 
-  // ================= SEND BACKEND =================
+  // =========================
+  // SEND BACKEND
+  // =========================
   const sendToBackend = async () => {
-    if (!capturedBlob) return;
+    if (!previewImage) return;
 
     setLoading(true);
     setError("");
 
     try {
+      const blob = await (await fetch(previewImage)).blob();
+
       const formData = new FormData();
-      formData.append("file", capturedBlob, "document.jpg");
+      formData.append("file", blob, "document.jpg");
 
       const res = await fetch(`${API_BASE_URL}/detect`, {
         method: "POST",
@@ -123,77 +147,61 @@ const CameraCapture: React.FC<Props> = ({ onExtractedData }) => {
 
       onExtractedData(data.parsed);
     } catch (err: any) {
-      setError(err.message || "Processing failed");
+      setError(err.message);
     }
 
     setLoading(false);
   };
 
   const reset = () => {
-    if (previewImage) URL.revokeObjectURL(previewImage);
     setPreviewImage(null);
-    setCapturedBlob(null);
+    setError("");
   };
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-lg w-full max-w-lg">
-    <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-3">
-    <div className="bg-indigo-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">
-      1
-    </div>
-    Scan Document
-  </h2>
+    <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-lg flex flex-col gap-4">
 
-      <div className="relative aspect-video bg-black rounded-xl overflow-hidden border">
+      {/* STEP HEADER */}
+      <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-3">
+        <div className="bg-indigo-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">
+          1
+        </div>
+        Scan Document
+      </h2>
 
-        {/* PREVIEW */}
-        {previewImage && (
+      {/* CAMERA AREA */}
+      <div className="relative w-full h-[360px] bg-black rounded-xl overflow-hidden">
+
+        {previewImage ? (
           <img
             src={previewImage}
             className="absolute inset-0 w-full h-full object-contain"
-            alt="Preview"
           />
-        )}
-
-        {/* VIDEO */}
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          className={`absolute inset-0 w-full h-full object-cover ${
-            isCameraOn && !previewImage ? "opacity-100" : "opacity-0"
-          }`}
-        />
-
-        {/* PLACEHOLDER */}
-        {!isCameraOn && !previewImage && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-white/60">
-            <ScanLine size={48} />
-            <span className="text-sm mt-2">
-              Camera preview will appear here
-            </span>
-          </div>
-        )}
-
-        {/* GUIDE FRAME (TIDAK UNTUK CROP) */}
-        {isCameraOn && !previewImage && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-
-            <div
-              className="
-                relative
-                w-[85%]
-                max-w-[500px]
-                aspect-[1.585/1]
-                rounded-xl
-                border-2 border-green-500
-              "
-              style={{
-                boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)"
-              }}
+        ) : (
+          <>
+            {/* VIDEO */}
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              className={`absolute inset-0 w-full h-full object-cover transition ${
+                isCameraOn ? "opacity-100" : "opacity-0"
+              }`}
             />
 
-          </div>
+            {/* FRAME OVERLAY */}
+            {isCameraOn && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div
+                  ref={frameRef}
+                  className="relative w-[88%] max-w-[520px] aspect-[1.585/1] border-2 border-green-500 rounded-xl"
+                  style={{
+                    boxShadow: "0 0 0 9999px rgba(0,0,0,0.65)",
+                  }}
+                />
+              </div>
+            )}
+          </>
         )}
 
         {/* LOADING */}
@@ -202,28 +210,37 @@ const CameraCapture: React.FC<Props> = ({ onExtractedData }) => {
             <Loader className="animate-spin text-white" />
           </div>
         )}
+
       </div>
 
+      <canvas ref={canvasRef} className="hidden" />
+
       {error && (
-        <div className="mt-3 text-sm text-red-600 bg-red-50 p-2 rounded">
+        <div className="bg-red-100 text-red-700 p-2 rounded text-sm">
           {error}
         </div>
       )}
 
+      {/* BUTTONS */}
       {!previewImage && (
-        <div className="flex gap-3 mt-4">
+        <div className="flex gap-3">
           <button
             onClick={startCamera}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg"
+            className="flex items-center justify-center gap-2 flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg transition"
           >
-            <Camera size={18} className="inline mr-2" />
-            Start Camera
+            <Camera size={18} />
+            Camera
           </button>
 
-          <label className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg text-center cursor-pointer">
-            <Upload size={18} className="inline mr-2" />
+          <label className="flex items-center justify-center gap-2 flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-3 rounded-lg cursor-pointer transition">
+            <Upload size={18} />
             Upload
-            <input type="file" accept="image/*" hidden onChange={handleUpload} />
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleUpload}
+              className="hidden"
+            />
           </label>
         </div>
       )}
@@ -231,7 +248,7 @@ const CameraCapture: React.FC<Props> = ({ onExtractedData }) => {
       {isCameraOn && !previewImage && (
         <button
           onClick={capturePhoto}
-          className="w-full mt-3 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg"
+          className="bg-red-500 hover:bg-red-600 text-white py-3 rounded-lg transition"
         >
           Capture
         </button>
@@ -241,21 +258,19 @@ const CameraCapture: React.FC<Props> = ({ onExtractedData }) => {
         <>
           <button
             onClick={sendToBackend}
-            className="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg transition"
           >
-            Process Document
+            Process
           </button>
 
           <button
             onClick={reset}
-            className="w-full mt-2 bg-gray-500 hover:bg-gray-600 text-white py-2 rounded-lg"
+            className="bg-gray-500 hover:bg-gray-600 text-white py-2 rounded-lg transition"
           >
             Retake
           </button>
         </>
       )}
-
-      <canvas ref={canvasRef} className="hidden" />
     </div>
   );
 };
