@@ -124,10 +124,6 @@ Run Backend
 uvicorn main:app --host 0.0.0.0 --port 8000
 
 Run Frontend
-npm run build
-npm run preview -- --host
+npm run dev
 
-Run ngrok
-ngrok http 4173
-
-Open the ngrok HTTPS URL on your mobile device
+Open  HTTPS URL on your mobile device

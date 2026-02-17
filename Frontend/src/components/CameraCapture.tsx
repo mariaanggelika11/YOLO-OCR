@@ -32,17 +32,17 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
   const [error, setError] = useState("");
 
   // =========================
-  // START CAMERA
+  // START CAMERA (LANDSCAPE FOR DL)
   // =========================
   const startCamera = async () => {
     setError("");
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "environment",
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          aspectRatio: 1.585, // DL ratio
+          width: { ideal: 1280 },
+          height: { ideal: 800 },
         },
       });
 
@@ -64,7 +64,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
   };
 
   // =========================
-  // CAPTURE (CROP SESUAI FRAME)
+  // CAPTURE BASED ON FRAME %
   // =========================
   const capturePhoto = () => {
     const video = videoRef.current;
@@ -73,16 +73,26 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
 
     if (!video || !canvas || !frame) return;
 
-    const videoRect = video.getBoundingClientRect();
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+
+    const container = video.parentElement;
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
     const frameRect = frame.getBoundingClientRect();
 
-    const scaleX = video.videoWidth / videoRect.width;
-    const scaleY = video.videoHeight / videoRect.height;
+    const percentX =
+      (frameRect.left - containerRect.left) / containerRect.width;
+    const percentY =
+      (frameRect.top - containerRect.top) / containerRect.height;
+    const percentWidth = frameRect.width / containerRect.width;
+    const percentHeight = frameRect.height / containerRect.height;
 
-    const cropX = (frameRect.left - videoRect.left) * scaleX;
-    const cropY = (frameRect.top - videoRect.top) * scaleY;
-    const cropWidth = frameRect.width * scaleX;
-    const cropHeight = frameRect.height * scaleY;
+    const cropX = percentX * videoWidth;
+    const cropY = percentY * videoHeight;
+    const cropWidth = percentWidth * videoWidth;
+    const cropHeight = percentHeight * videoHeight;
 
     canvas.width = cropWidth;
     canvas.height = cropHeight;
@@ -102,7 +112,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
       cropHeight
     );
 
-    const cropped = canvas.toDataURL("image/jpeg", 1);
+    const cropped = canvas.toDataURL("image/jpeg", 0.95);
 
     setPreviewImage(cropped);
     stopCamera();
@@ -133,7 +143,6 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
 
     try {
       const blob = await (await fetch(previewImage)).blob();
-
       const formData = new FormData();
       formData.append("file", blob, "document.jpg");
 
@@ -161,40 +170,37 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
   return (
     <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-lg flex flex-col gap-4">
 
-      {/* STEP HEADER */}
-      <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-3">
+      <h2 className="text-xl font-bold text-gray-800 flex items-center gap-3">
         <div className="bg-indigo-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">
           1
         </div>
         Scan Document
       </h2>
 
-      {/* CAMERA AREA */}
-      <div className="relative w-full h-[360px] bg-black rounded-xl overflow-hidden">
+      {/* CONTAINER DL RATIO */}
+      <div className="relative w-full aspect-[1.585/1] bg-black rounded-xl overflow-hidden">
 
         {previewImage ? (
           <img
             src={previewImage}
-            className="absolute inset-0 w-full h-full object-contain"
+            className="absolute inset-0 w-full h-full object-cover"
           />
         ) : (
           <>
-            {/* VIDEO */}
             <video
               ref={videoRef}
               autoPlay
               playsInline
-              className={`absolute inset-0 w-full h-full object-cover transition ${
+              className={`absolute inset-0 w-full h-full object-cover ${
                 isCameraOn ? "opacity-100" : "opacity-0"
               }`}
             />
 
-            {/* FRAME OVERLAY */}
             {isCameraOn && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div
                   ref={frameRef}
-                  className="relative w-[88%] max-w-[520px] aspect-[1.585/1] border-2 border-green-500 rounded-xl"
+                  className="relative w-[90%] aspect-[1.585/1] border-2 border-green-500 rounded-xl"
                   style={{
                     boxShadow: "0 0 0 9999px rgba(0,0,0,0.65)",
                   }}
@@ -204,13 +210,11 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
           </>
         )}
 
-        {/* LOADING */}
         {loading && (
           <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
             <Loader className="animate-spin text-white" />
           </div>
         )}
-
       </div>
 
       <canvas ref={canvasRef} className="hidden" />
@@ -221,7 +225,6 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
         </div>
       )}
 
-      {/* BUTTONS */}
       {!previewImage && (
         <div className="flex gap-3">
           <button
