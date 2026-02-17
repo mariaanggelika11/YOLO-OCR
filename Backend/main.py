@@ -12,6 +12,7 @@ from ultralytics import YOLO
 
 from processors.passport_processor import process_passport
 from processors.dl_processor import process_driving_license
+from processors.face_extractor import detect_and_crop_face, face_to_base64
 from fallback.router import apply_fallback
 
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -29,9 +30,11 @@ passport_model = YOLO("models/passport_model.pt")
 driving_model = YOLO("models/dl_model.pt")
 reader = easyocr.Reader(['en'])
 
+
 def extract_text(img: np.ndarray) -> str:
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     return pytesseract.image_to_string(gray).lower()
+
 
 def detect_doc_type(img: np.ndarray, text: str):
 
@@ -47,6 +50,7 @@ def detect_doc_type(img: np.ndarray, text: str):
         return "passport"
     return "driving_license"
 
+
 @app.post("/detect")
 async def detect_document(file: UploadFile = File(...)):
 
@@ -61,23 +65,39 @@ async def detect_document(file: UploadFile = File(...)):
 
     doc_type = detect_doc_type(img_rgb, text)
 
+    # =========================
+    # DOCUMENT PROCESSING
+    # =========================
     if doc_type == "passport":
         parsed = process_passport(
             img_rgb, passport_model, reader
         )
-
     else:
-      parsed = process_driving_license(
-      img_rgb, driving_model, reader)
+        parsed = process_driving_license(
+            img_rgb, driving_model, reader
+        )
 
-    # STATE ENRICH + FALLBACK PIPELINE (SELALU JALAN)
+    # =========================
+    # FACE DETECTION
+    # =========================
+    face_image = detect_and_crop_face(img_rgb)
+    face_base64 = None
+
+    if face_image:
+        face_base64 = face_to_base64(face_image)
+
+    # =========================
+    # FALLBACK PIPELINE
+    # =========================
     parsed = apply_fallback(img_rgb, reader, parsed)
 
     return JSONResponse({
         "success": True,
         "detected_type": doc_type,
+        "face": face_base64,
         "parsed": parsed
     })
+
 
 if __name__ == "__main__":
     import uvicorn

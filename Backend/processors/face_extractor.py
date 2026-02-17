@@ -1,92 +1,45 @@
-import io
+import cv2
 import base64
+import io
 from PIL import Image
-from datetime import datetime
 
-DEBUG = True
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
 
-def dbg(tag, payload=None):
-    if not DEBUG:
-        return
-    ts = datetime.now().strftime("%H:%M:%S")
-    print(f"\n[FACE_EXTRACT {ts}] {tag}")
-    if payload is not None:
-        print(payload)
+def detect_and_crop_face(image_rgb):
+    gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
 
-# =========================
-# FACE TEMPLATE PER STATE
-# =========================
-STATE_FACE_TEMPLATE = {
-    "GENERAL": {
-        # template aman (kiri-tengah)
-        "x1": 0.04,
-        "y1": 0.15,
-        "x2": 0.35,
-        "y2": 0.70
-    },
-
-    "MARYLAND": {
-        "x1": 0.01,   # geser lebih ke kiri
-        "y1": 0.20,   # atas kotak foto (sudah pas)
-        "x2": 0.26,   # POTONG KANAN LAGI (hilangkan teks)
-        "y2": 0.80    # bawah kotak foto
-    },
-
-
-    "NEW YORK": {
-        "x1": 0.04,
-        "y1": 0.20,
-        "x2": 0.30,
-        "y2": 0.60
-    },
-
-    "VIRGINIA": {
-        "x1": 0.06,
-        "y1": 0.17,
-        "x2": 0.34,
-        "y2": 0.65
-    },
-
-        "PENNSYLVANIA": {
-        "x1": 0.03,   # sangat kiri
-        "y1": 0.25,   # sedikit lebih atas
-        "x2": 0.32,   # cukup lebar
-        "y2": 0.72    # bawah foto
-    },
-
-}
-
-# =========================
-# CORE FACE CROP
-# =========================
-def crop_face_by_state(image_rgb, state_name=None):
-    img = Image.fromarray(image_rgb).convert("RGB")
-    w, h = img.size
-
-    key = (state_name or "").upper()
-    tpl = STATE_FACE_TEMPLATE.get(key)
-
-    if not tpl:
-        dbg("STATE_NOT_FOUND_USING_GENERAL", state_name)
-        tpl = STATE_FACE_TEMPLATE["GENERAL"]
-
-    box = (
-        int(w * tpl["x1"]),
-        int(h * tpl["y1"]),
-        int(w * tpl["x2"]),
-        int(h * tpl["y2"]),
+    faces = face_cascade.detectMultiScale(
+        gray,
+        scaleFactor=1.2,
+        minNeighbors=5,
+        minSize=(80, 80)
     )
 
-    dbg("CROP_BOX", {
-        "state": key or "NONE",
-        "box": box
-    })
+    if len(faces) == 0:
+        return None
 
-    return img.crop(box)
+    # Ambil wajah terbesar
+    faces = sorted(faces, key=lambda x: x[2] * x[3], reverse=True)
+    x, y, w, h = faces[0]
 
-# =========================
-# IMAGE TO BASE64
-# =========================
+    # =========================
+    # TAMBAH MARGIN (ZOOM OUT)
+    # =========================
+    padding_x = int(w * 0.25)   # 25% kiri kanan
+    padding_y = int(h * 0.35)   # 35% atas bawah
+
+    x1 = max(0, x - padding_x)
+    y1 = max(0, y - padding_y)
+    x2 = min(image_rgb.shape[1], x + w + padding_x)
+    y2 = min(image_rgb.shape[0], y + h + padding_y)
+
+    img = Image.fromarray(image_rgb)
+    face = img.crop((x1, y1, x2, y2))
+
+    return face
+
 def face_to_base64(face_img: Image.Image):
     buf = io.BytesIO()
     face_img.save(buf, format="JPEG", quality=90)

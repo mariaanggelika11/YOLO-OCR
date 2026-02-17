@@ -2,7 +2,7 @@ import re
 import pytesseract
 import numpy as np
 from datetime import datetime
-from processors.face_extractor import crop_face_by_state, face_to_base64
+from processors.face_extractor import detect_and_crop_face, face_to_base64
 
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
@@ -17,7 +17,6 @@ def dbg(tag, payload=None):
 
     def to_python(obj):
         try:
-            import numpy as np
             if isinstance(obj, np.generic):
                 return obj.item()
             if isinstance(obj, np.ndarray):
@@ -36,6 +35,7 @@ def dbg(tag, payload=None):
             print(json.dumps(safe, indent=2))
         else:
             print(to_python(payload))
+
 
 # =========================
 # OCR
@@ -56,6 +56,7 @@ def read_text(img, reader):
     dbg("OCR_TESSERACT_RESULT", txt)
     return txt
 
+
 # =========================
 # CLEANERS
 # =========================
@@ -63,6 +64,7 @@ def clean_license_number(txt):
     cleaned = re.sub(r"[^A-Z0-9]", "", txt.upper()).replace("O", "0")
     dbg("CLEAN_LICENSE", {"raw": txt, "clean": cleaned})
     return cleaned
+
 
 def clean_date(txt):
     m = re.search(r"(\d{2})\D(\d{2})\D(\d{4})", txt)
@@ -74,6 +76,7 @@ def clean_date(txt):
     dbg("CLEAN_DATE_FAIL", txt)
     return ""
 
+
 def clean_sex(txt):
     t = txt.strip().upper()
     if t == "M":
@@ -84,6 +87,7 @@ def clean_sex(txt):
         return "FEMALE"
     dbg("CLEAN_SEX_FAIL", txt)
     return ""
+
 
 # =========================
 # MAIN PROCESSOR
@@ -112,7 +116,8 @@ def process_driving_license(image_rgb, model, reader, conf=0.35, iou=0.45):
         "firstName": "",
         "lastName": "",
         "licenseNumber": "",
-        "sex": ""
+        "sex": "",
+        "faceImage": ""
     }
 
     for idx, box in enumerate(boxes):
@@ -129,9 +134,6 @@ def process_driving_license(image_rgb, model, reader, conf=0.35, iou=0.45):
 
         x1, y1, x2, y2 = box.xyxy.cpu().numpy().astype(int).reshape(-1)
 
-        dbg("BOX_COORD", [x1, y1, x2, y2])
-
-        # safety crop
         h, w, _ = image_rgb.shape
         x1, y1 = max(0, x1), max(0, y1)
         x2, y2 = min(w, x2), min(h, y2)
@@ -152,10 +154,8 @@ def process_driving_license(image_rgb, model, reader, conf=0.35, iou=0.45):
         })
 
         if not txt:
-            dbg("SKIP_EMPTY_TEXT", cls)
             continue
 
-        # ===== FIELD HANDLING =====
         if cls == "licenseNumber":
             txt = clean_license_number(txt)
 
@@ -164,76 +164,36 @@ def process_driving_license(image_rgb, model, reader, conf=0.35, iou=0.45):
 
         elif cls == "dateOfBirth":
             d = clean_date(txt)
-
             if not d:
-                dbg("FIELD_FAIL", "dateOfBirth")
                 continue
 
-            try:
-                day, month, year = map(int, d.split("/"))
-            except Exception:
-                dbg("DOB_PARSE_FAIL", d)
-                continue
-
-            # ===============================
-            # Jika belum ada DOB → set langsung
-            # ===============================
             if not data["dateOfBirth"]:
                 data["dateOfBirth"] = d
-                dbg("DOB_FIRST_SET", d)
-
             else:
-                # ===============================
-                # Bandingkan tahun → pilih yang lebih tua
-                # ===============================
-                old_day, old_month, old_year = map(
-                    int, data["dateOfBirth"].split("/")
-                )
-
-                # DOB seharusnya lebih tua (tahun lebih kecil)
-                if year < old_year:
-                    dbg("DOB_REPLACED", {
-                        "old": data["dateOfBirth"],
-                        "new": d
-                    })
+                old_year = int(data["dateOfBirth"].split("/")[-1])
+                new_year = int(d.split("/")[-1])
+                if new_year < old_year:
                     data["dateOfBirth"] = d
-                else:
-                    dbg("DOB_SKIP_AS_EXP", {
-                        "existing": data["dateOfBirth"],
-                        "candidate": d
-                    })
-
             continue
 
         if not data[cls]:
             data[cls] = txt.upper()
-            dbg("FIELD_SET", {cls: data[cls]})
-        else:
-            dbg("FIELD_ALREADY_FILLED", {cls: data[cls]})
 
     dbg("PROCESS_RESULT", data)
 
-    dbg("MISSING_FIELDS", [k for k,v in data.items() if not v])
-
     # =========================
-    # FACE EXTRACTION (GENERAL)
+    # FACE EXTRACTION (HAAR)
     # =========================
     try:
-        state = data.get("StateName")  # bisa None / ""
+        face_img = detect_and_crop_face(image_rgb)
 
-        face_img = crop_face_by_state(image_rgb, state)
-        face_b64 = face_to_base64(face_img)
-
-        data["faceImage"] = face_b64
-
-        dbg("FACE_EXTRACTED", {
-            "state": state or "GENERAL",
-            "face_size": face_img.size
-        })
+        if face_img:
+            data["faceImage"] = face_to_base64(face_img)
+            dbg("FACE_EXTRACTED", {"face_size": face_img.size})
+        else:
+            dbg("FACE_NOT_FOUND")
 
     except Exception as e:
         dbg("FACE_EXTRACT_FAIL", str(e))
-        data["faceImage"] = ""
 
     return data
-
