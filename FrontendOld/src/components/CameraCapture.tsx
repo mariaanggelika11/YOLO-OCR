@@ -66,49 +66,57 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
   // =========================
   // CAPTURE BASED ON FRAME %
   // =========================
-const capturePhoto = () => {
-  const video = videoRef.current;
-  const canvas = canvasRef.current;
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const frame = frameRef.current;
 
-  if (!video || !canvas) return;
+    if (!video || !canvas || !frame) return;
 
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
 
-  const frameWidthRatio = 0.9; // sama seperti overlay 90%
-  const targetAspect = 1.585;
+    const container = video.parentElement;
+    if (!container) return;
 
-  const cropWidth = vw * frameWidthRatio;
-  const cropHeight = cropWidth / targetAspect;
+    const containerRect = container.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
 
-  const cropX = (vw - cropWidth) / 2;
-  const cropY = (vh - cropHeight) / 2;
+    const percentX =
+      (frameRect.left - containerRect.left) / containerRect.width;
+    const percentY =
+      (frameRect.top - containerRect.top) / containerRect.height;
+    const percentWidth = frameRect.width / containerRect.width;
+    const percentHeight = frameRect.height / containerRect.height;
 
-  canvas.width = cropWidth;
-  canvas.height = cropHeight;
+    const cropX = percentX * videoWidth;
+    const cropY = percentY * videoHeight;
+    const cropWidth = percentWidth * videoWidth;
+    const cropHeight = percentHeight * videoHeight;
 
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+    canvas.width = cropWidth;
+    canvas.height = cropHeight;
 
-  ctx.drawImage(
-    video,
-    cropX,
-    cropY,
-    cropWidth,
-    cropHeight,
-    0,
-    0,
-    cropWidth,
-    cropHeight
-  );
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-  const cropped = canvas.toDataURL("image/jpeg", 0.95);
+    ctx.drawImage(
+      video,
+      cropX,
+      cropY,
+      cropWidth,
+      cropHeight,
+      0,
+      0,
+      cropWidth,
+      cropHeight
+    );
 
-  console.log("Cropped resolution:", cropWidth, cropHeight);
+    const cropped = canvas.toDataURL("image/jpeg", 0.95);
 
-  setPreviewImage(cropped);
-  stopCamera();
-};
+    setPreviewImage(cropped);
+    stopCamera();
+  };
 
   // =========================
   // UPLOAD

@@ -16,6 +16,7 @@ def dbg(tag, payload=None):
             import json
             safe = payload.copy()
 
+            # 🔥 sembunyikan base64
             if "faceImage" in safe:
                 safe["faceImage"] = "[HIDDEN]"
 
