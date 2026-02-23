@@ -16,7 +16,6 @@ def dbg(tag, payload=None):
             import json
             safe = payload.copy()
 
-            # 🔥 sembunyikan base64
             if "faceImage" in safe:
                 safe["faceImage"] = "[HIDDEN]"
 
@@ -130,7 +129,6 @@ def apply(image_rgb, reader, data):
         for l in lines:
             original = l.strip()
 
-            # 🔥 hanya ambil jika memang dari OCR sudah FULL UPPERCASE
             if original != original.upper():
                 continue
 

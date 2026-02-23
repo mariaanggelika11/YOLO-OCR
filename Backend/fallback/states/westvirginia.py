@@ -12,23 +12,12 @@ def dbg(tag, payload=None):
     if payload is not None:
         print(payload)
 
-
-# ======================================================
-# ENRICH
-# ======================================================
 def enrich(data):
-    """
-    West Virginia:
-    License = 1 letter + 6 digits
-    Example: Y999999
-    """
-
     dbg("ENRICH_START", data)
 
     lic = data.get("licenseNumber", "")
     if lic:
         lic = re.sub(r"[^A-Z0-9]", "", lic.upper())
-
         if re.fullmatch(r"[A-Z]\d{6}", lic):
             data["licenseNumber"] = lic
             dbg("LICENSE_OK", lic)
@@ -38,10 +27,6 @@ def enrich(data):
     dbg("ENRICH_RESULT", data)
     return data
 
-
-# ======================================================
-# FALLBACK OCR
-# ======================================================
 def apply(image_rgb, reader, data):
 
     dbg("FALLBACK_START", data)
@@ -49,9 +34,6 @@ def apply(image_rgb, reader, data):
     lines = reader.readtext(image_rgb, detail=0, paragraph=False)
     dbg("OCR_LINES", lines)
 
-    # =============================
-    # STATE CONFIRMATION
-    # =============================
     if not data.get("StateName"):
         for l in lines:
             if "WEST VIRGINIA" in l.upper():
@@ -59,9 +41,6 @@ def apply(image_rgb, reader, data):
                 dbg("STATE_FOUND", "WEST VIRGINIA")
                 break
 
-    # =============================
-    # LICENSE (Y999999)
-    # =============================
     if not data.get("licenseNumber"):
         for l in lines:
             t = re.sub(r"[^A-Z0-9]", "", l.upper())
@@ -70,48 +49,77 @@ def apply(image_rgb, reader, data):
                 dbg("LICENSE_FOUND", t)
                 break
 
-    # =============================
-    # DOB
-    # =============================
     if not data.get("dateOfBirth"):
         for l in lines:
-            m = re.search(r"DOB.*?(\d{2}/\d{2}/\d{4})", l.upper())
+            m = re.search(r"(\d{2}/\d{2}/\d{4})", l)
             if m:
                 data["dateOfBirth"] = m.group(1)
                 dbg("DOB_FOUND", data["dateOfBirth"])
                 break
 
-    # =============================
-    # SEX
-    # =============================
     if not data.get("sex"):
         for l in lines:
-            m = re.search(r"SEX[:\s]*([MF])", l.upper())
+            m = re.search(r"\bSEX\b[:\s]*([MF])", l.upper())
             if m:
                 data["sex"] = "MALE" if m.group(1) == "M" else "FEMALE"
                 dbg("SEX_FOUND", data["sex"])
                 break
 
-    # =============================
-    # NAME (1. LASTNAME / 2. FIRSTNAME, M)
-    # =============================
     if not data.get("firstName") or not data.get("lastName"):
 
-        for i, l in enumerate(lines):
-            t = l.strip().upper()
+        single_words = []
+        multi_words = []
 
-            # LAST NAME (1. XXXXX)
-            if re.match(r"1\.\s*[A-Z]+", t):
-                lastname = re.sub(r"1\.\s*", "", t)
-                data["lastName"] = lastname
-                dbg("LASTNAME_FOUND", lastname)
+        for l in lines:
+            original = l.strip()
 
-            # FIRST NAME (2. TINA, A)
-            if re.match(r"2\.\s*[A-Z]+", t):
-                first_part = re.sub(r"2\.\s*", "", t)
+            if original != original.upper():
+                continue
+
+            if not re.fullmatch(r"[A-Z0-9\.\,\s]+", original):
+                continue
+
+            if original in VALID_STATES:
+                continue
+
+            if original in NAME_BLACKLIST:
+                continue
+
+            if re.match(r"1\.\s*[A-Z ]+", original) and not data.get("lastName"):
+                lastname = re.sub(r"1\.\s*", "", original)
+                data["lastName"] = lastname.strip()
+                dbg("LASTNAME_FOUND", data["lastName"])
+                continue
+
+            if re.match(r"2\.\s*[A-Z ,]+", original) and not data.get("firstName"):
+                first_part = re.sub(r"2\.\s*", "", original)
                 first = first_part.split(",")[0].strip()
                 data["firstName"] = first
-                dbg("FIRSTNAME_FOUND", first)
+                dbg("FIRSTNAME_FOUND", data["firstName"])
+                continue
+
+            clean = re.sub(r"[^\sA-Z]", "", original).strip()
+            if not clean:
+                continue
+
+            words = clean.split()
+
+            if len(words) == 1:
+                single_words.append(clean)
+            elif len(words) >= 2:
+                multi_words.append(clean)
+
+        if not data.get("lastName") and single_words:
+            data["lastName"] = single_words[0]
+            dbg("LASTNAME_SET", data["lastName"])
+
+        if not data.get("firstName"):
+            if multi_words:
+                data["firstName"] = multi_words[0]
+                dbg("FIRSTNAME_SET", data["firstName"])
+            elif len(single_words) >= 2:
+                data["firstName"] = single_words[1]
+                dbg("FIRSTNAME_SET", data["firstName"])
 
     dbg("FALLBACK_RESULT", data)
     return data

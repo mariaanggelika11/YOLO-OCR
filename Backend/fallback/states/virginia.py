@@ -21,10 +21,6 @@ def dbg(tag, payload=None):
 # LICENSE FORMATTER (VA)
 # =========================
 def format_va_license(raw: str) -> str:
-    """
-    Virginia DL format:
-    S12345678
-    """
     if not raw:
         return raw
 
@@ -37,13 +33,33 @@ def format_va_license(raw: str) -> str:
 
 
 # =========================
+# DOB VALIDATOR
+# =========================
+def is_valid_dob(date_str):
+    try:
+        d, m, y = map(int, date_str.split("/"))
+        year_now = datetime.now().year
+
+        if y < 1900:
+            return False
+
+        if y > year_now:
+            return False
+
+        age = year_now - y
+
+        if age < 15 or age > 100:
+            return False
+
+        return True
+    except:
+        return False
+
+
+# =========================
 # ENRICH (ALWAYS RUN)
 # =========================
 def enrich(data):
-    """
-    Cleansing & formatting khusus Virginia
-    Dipanggil walau YOLO sukses
-    """
 
     dbg("ENRICH_START", data)
 
@@ -64,9 +80,6 @@ def enrich(data):
 # FALLBACK OCR
 # =========================
 def apply(image_rgb, reader, data):
-    """
-    Isi hanya field kosong
-    """
 
     dbg("FALLBACK_START", data)
 
@@ -95,16 +108,27 @@ def apply(image_rgb, reader, data):
                 break
 
     # =====================
-    # DOB
+    # DOB (ANTI-EXP SAFE)
     # =====================
     if not data.get("dateOfBirth"):
+
+        dob_candidates = []
+
         for l in lines:
-            m = re.search(r"(\d{2})[\/\-.](\d{2})[\/\-.](\d{4})", l)
-            if m:
-                d, m_, y = m.groups()
-                data["dateOfBirth"] = f"{d}/{m_}/{y}"
-                dbg("DOB_FOUND", data["dateOfBirth"])
-                break
+            matches = re.findall(r"(\d{2})[\/\-.](\d{2})[\/\-.](\d{4})", l)
+
+            for d, m_, y in matches:
+                candidate = f"{d}/{m_}/{y}"
+
+                if is_valid_dob(candidate):
+                    dob_candidates.append(candidate)
+
+        dbg("DOB_CANDIDATES_VALID", dob_candidates)
+
+        if dob_candidates:
+            dob_candidates.sort(key=lambda x: int(x.split("/")[-1]))
+            data["dateOfBirth"] = dob_candidates[0]
+            dbg("DOB_SELECTED", data["dateOfBirth"])
 
     # =====================
     # SEX
@@ -122,37 +146,61 @@ def apply(image_rgb, reader, data):
                 break
 
     # =====================
-    # NAME EXTRACTION
+    # NAME EXTRACTION (FIXED)
     # =====================
-    candidates = []
-
     if not data.get("firstName") or not data.get("lastName"):
+
+        single_words = []
+        multi_words = []
+
         for l in lines:
-            t = l.strip().upper()
+            original = l.strip()
 
-            if not t.isalpha():
-                continue
-            if len(t) < 3:
-                continue
-            if any(state in t for state in VALID_STATES):
-                continue
-            if t in NAME_BLACKLIST:
-                continue
-            if not t.isupper():
+            # Harus benar-benar ALL CAPS asli
+            if original != original.upper():
                 continue
 
-            candidates.append(t)
+            # Hanya huruf & spasi
+            if not re.fullmatch(r"[A-Z ]+", original):
+                continue
 
-        dbg("NAME_CANDIDATES_FILTERED", candidates)
+            # Skip state
+            if original in VALID_STATES:
+                continue
 
-        if candidates and not data.get("lastName"):
-            data["lastName"] = candidates[0]
+            # Skip blacklist
+            if original in NAME_BLACKLIST:
+                continue
 
+            words = original.split()
+
+            if len(words) == 1:
+                single_words.append(original)
+            elif len(words) >= 2:
+                multi_words.append(original)
+
+        dbg("NAME_SINGLE_WORDS", single_words)
+        dbg("NAME_MULTI_WORDS", multi_words)
+
+        # Last name → single word pertama
+        if not data.get("lastName") and single_words:
+            data["lastName"] = single_words[0]
+            dbg("LASTNAME_SET", data["lastName"])
+
+        # First name logic
         if not data.get("firstName"):
-            if "FNU" in candidates:
-                data["firstName"] = "FNU"
-            elif len(candidates) > 1:
-                data["firstName"] = candidates[1]
+
+            if multi_words:
+                data["firstName"] = multi_words[0]
+                dbg("FIRSTNAME_SET", data["firstName"])
+
+            elif len(single_words) >= 2:
+                data["firstName"] = single_words[1]
+                dbg("FIRSTNAME_SET", data["firstName"])
+
+            elif len(single_words) == 1:
+                data["firstName"] = single_words[0]
+                dbg("FIRSTNAME_SET_SINGLE", data["firstName"])
 
     dbg("FALLBACK_RESULT", data)
     return data

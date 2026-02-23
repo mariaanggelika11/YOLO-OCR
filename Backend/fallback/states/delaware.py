@@ -12,10 +12,6 @@ def dbg(tag, payload=None):
     if payload is not None:
         print(payload)
 
-
-# ======================================================
-# ENRICH
-# ======================================================
 def enrich(data):
     """
     Delaware:
@@ -38,10 +34,6 @@ def enrich(data):
     dbg("ENRICH_RESULT", data)
     return data
 
-
-# ======================================================
-# FALLBACK OCR
-# ======================================================
 def apply(image_rgb, reader, data):
 
     dbg("FALLBACK_START", data)
@@ -49,9 +41,6 @@ def apply(image_rgb, reader, data):
     lines = reader.readtext(image_rgb, detail=0, paragraph=False)
     dbg("OCR_LINES", lines)
 
-    # =============================
-    # STATE CONFIRMATION
-    # =============================
     if not data.get("StateName"):
         for l in lines:
             if "DELAWARE" in l.upper():
@@ -59,9 +48,6 @@ def apply(image_rgb, reader, data):
                 dbg("STATE_FOUND", "DELAWARE")
                 break
 
-    # =============================
-    # LICENSE (8 digit)
-    # =============================
     if not data.get("licenseNumber"):
         for l in lines:
             t = re.sub(r"[^0-9]", "", l)
@@ -70,9 +56,6 @@ def apply(image_rgb, reader, data):
                 dbg("LICENSE_FOUND", t)
                 break
 
-    # =============================
-    # DOB
-    # =============================
     if not data.get("dateOfBirth"):
         for l in lines:
             m = re.search(r"DOB.*?(\d{2}/\d{2}/\d{4})", l.upper())
@@ -81,9 +64,6 @@ def apply(image_rgb, reader, data):
                 dbg("DOB_FOUND", data["dateOfBirth"])
                 break
 
-    # =============================
-    # SEX
-    # =============================
     if not data.get("sex"):
         for l in lines:
             m = re.search(r"\bSEX\b[:\s]*([MF])", l.upper())
@@ -92,9 +72,6 @@ def apply(image_rgb, reader, data):
                 dbg("SEX_FOUND", data["sex"])
                 break
 
-    # =============================
-    # NAME (LASTNAME / FIRSTNAME)
-    # =============================
     if not data.get("firstName") or not data.get("lastName"):
 
         candidates = []

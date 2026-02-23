@@ -12,22 +12,12 @@ def dbg(tag, payload=None):
     if payload is not None:
         print(payload)
 
-# ======================================================
-# ENRICH (Always run)
-# ======================================================
 def enrich(data):
-    """
-    Pennsylvania:
-    License format = 8 digit numeric
-    Example: 12345678
-    """
-
     dbg("ENRICH_START", data)
 
     lic = data.get("licenseNumber", "")
     if lic:
         lic = re.sub(r"[^0-9]", "", lic)
-
         if re.fullmatch(r"\d{8}", lic):
             data["licenseNumber"] = lic
             dbg("LICENSE_OK", lic)
@@ -37,9 +27,6 @@ def enrich(data):
     dbg("ENRICH_RESULT", data)
     return data
 
-# ======================================================
-# FALLBACK OCR (PA)
-# ======================================================
 def apply(image_rgb, reader, data):
 
     dbg("FALLBACK_START", data)
@@ -47,9 +34,6 @@ def apply(image_rgb, reader, data):
     lines = reader.readtext(image_rgb, detail=0, paragraph=False)
     dbg("OCR_LINES", lines)
 
-    # ==================================================
-    # STATE CONFIRMATION
-    # ==================================================
     if not data.get("StateName"):
         for l in lines:
             if "PENNSYLVANIA" in l.upper():
@@ -57,9 +41,6 @@ def apply(image_rgb, reader, data):
                 dbg("STATE_FOUND", "PENNSYLVANIA")
                 break
 
-    # ==================================================
-    # LICENSE NUMBER (8 digit numeric)
-    # ==================================================
     if not data.get("licenseNumber"):
         for l in lines:
             t = re.sub(r"[^0-9]", "", l)
@@ -68,9 +49,6 @@ def apply(image_rgb, reader, data):
                 dbg("LICENSE_FOUND", t)
                 break
 
-    # ==================================================
-    # DOB (08/04/1969)
-    # ==================================================
     if not data.get("dateOfBirth"):
         for l in lines:
             m = re.search(r"\b(\d{2}/\d{2}/\d{4})\b", l)
@@ -79,9 +57,6 @@ def apply(image_rgb, reader, data):
                 dbg("DOB_FOUND", data["dateOfBirth"])
                 break
 
-    # ==================================================
-    # SEX (SEX: F)
-    # ==================================================
     if not data.get("sex"):
         for l in lines:
             t = l.upper()
@@ -91,39 +66,46 @@ def apply(image_rgb, reader, data):
                 dbg("SEX_FOUND", data["sex"])
                 break
 
-    # ==================================================
-    # NAME
-    # Layout:
-    # SAMPLE
-    # JANICE ANN
-    # ==================================================
     if not data.get("firstName") or not data.get("lastName"):
 
-        candidates = []
+        single_words = []
+        multi_words = []
 
         for l in lines:
-            t = l.strip().upper()
+            original = l.strip()
 
-            if not t.isalpha():
-                continue
-            if len(t) < 3:
-                continue
-            if t in VALID_STATES:
-                continue
-            if t in NAME_BLACKLIST:
+            if original != original.upper():
                 continue
 
-            candidates.append(t)
+            if not re.fullmatch(r"[A-Z ]+", original):
+                continue
 
-        dbg("NAME_CANDIDATES", candidates)
+            if original in VALID_STATES:
+                continue
 
-        if len(candidates) >= 2:
-            if not data.get("lastName"):
-                data["lastName"] = candidates[0]
-                dbg("LASTNAME_SET", data["lastName"])
+            if original in NAME_BLACKLIST:
+                continue
 
-            if not data.get("firstName"):
-                data["firstName"] = candidates[1]
+            words = original.split()
+
+            if len(words) == 1:
+                single_words.append(original)
+            elif len(words) >= 2:
+                multi_words.append(original)
+
+        dbg("NAME_SINGLE_WORDS", single_words)
+        dbg("NAME_MULTI_WORDS", multi_words)
+
+        if not data.get("lastName") and single_words:
+            data["lastName"] = single_words[0]
+            dbg("LASTNAME_SET", data["lastName"])
+
+        if not data.get("firstName"):
+            if multi_words:
+                data["firstName"] = multi_words[0]
+                dbg("FIRSTNAME_SET", data["firstName"])
+            elif len(single_words) >= 2:
+                data["firstName"] = single_words[1]
                 dbg("FIRSTNAME_SET", data["firstName"])
 
     dbg("FALLBACK_RESULT", data)
