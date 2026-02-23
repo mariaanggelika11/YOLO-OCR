@@ -1,5 +1,6 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Camera, Upload, Loader } from "lucide-react";
+import { analyzeFrame, resetAnalyzer } from "../utils/FrameAnalyzer";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
@@ -31,30 +32,55 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // 🔥 NEW STATES
+  const [warning, setWarning] = useState<string | null>(null);
+  const [qualityScore, setQualityScore] = useState(0);
+  const [isValidFrame, setIsValidFrame] = useState(false);
+  const validTimerRef = useRef<number | null>(null);
+
   // =========================
-  // START CAMERA (LANDSCAPE FOR DL)
+  // START CAMERA
   // =========================
   const startCamera = async () => {
     setError("");
+
     try {
+      // 🔥 Cek apakah browser support
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setError("Camera not supported on this device");
+        return;
+      }
+
+      // 🔥 Coba akses kamera (akan trigger permission popup)
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: "environment",
-          aspectRatio: 1.585, // DL ratio
+          facingMode: { ideal: "environment" },
+          aspectRatio: 1.585,
           width: { ideal: 1280 },
           height: { ideal: 800 },
         },
+        audio: false,
       });
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute("playsinline", "true"); // 🔥 penting untuk Android
+        await videoRef.current.play();
         setIsCameraOn(true);
       }
-    } catch {
-      setError("Cannot access camera");
+
+    } catch (err: any) {
+      console.error("Camera error:", err);
+
+      if (err.name === "NotAllowedError") {
+        setError("Camera permission denied. Please allow camera access.");
+      } else if (err.name === "NotFoundError") {
+        setError("No camera device found.");
+      } else {
+        setError("Cannot access camera");
+      }
     }
   };
-
   const stopCamera = () => {
     if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
@@ -64,65 +90,138 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
   };
 
   // =========================
-  // CAPTURE BASED ON FRAME %
+  // REALTIME ANALYZER
   // =========================
-  const capturePhoto = () => {
+  useEffect(() => {
+    if (!isCameraOn || previewImage) return;
+
+    const interval = setInterval(() => {
+      runAnalyzer();
+    }, 300);
+
+    return () => clearInterval(interval);
+  }, [isCameraOn, previewImage]);
+
+  useEffect(() => {
+    if (!previewImage) return;
+
+    resetAnalyzer();
+
+    const img = new Image();
+    img.src = previewImage;
+
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+
+      ctx.drawImage(img, 0, 0);
+
+    const result = analyzeFrame(ctx,
+        canvas.width,
+        canvas.height,
+        false
+      );
+      setWarning(result.warning);
+      setQualityScore(result.score);
+      setIsValidFrame(result.isValid);
+    };
+  }, [previewImage]);
+
+  const runAnalyzer = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const frame = frameRef.current;
 
-    if (!video || !canvas || !frame) return;
-
-    const videoWidth = video.videoWidth;
-    const videoHeight = video.videoHeight;
-
-    const container = video.parentElement;
-    if (!container) return;
-
-    const containerRect = container.getBoundingClientRect();
-    const frameRect = frame.getBoundingClientRect();
-
-    const percentX =
-      (frameRect.left - containerRect.left) / containerRect.width;
-    const percentY =
-      (frameRect.top - containerRect.top) / containerRect.height;
-    const percentWidth = frameRect.width / containerRect.width;
-    const percentHeight = frameRect.height / containerRect.height;
-
-    const cropX = percentX * videoWidth;
-    const cropY = percentY * videoHeight;
-    const cropWidth = percentWidth * videoWidth;
-    const cropHeight = percentHeight * videoHeight;
-
-    canvas.width = cropWidth;
-    canvas.height = cropHeight;
+    if (!video || !canvas) return;
+    if (video.videoWidth === 0) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    ctx.drawImage(
-      video,
-      cropX,
-      cropY,
-      cropWidth,
-      cropHeight,
-      0,
-      0,
-      cropWidth,
-      cropHeight
-    );
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
-    const cropped = canvas.toDataURL("image/jpeg", 0.95);
+    ctx.drawImage(video, 0, 0);
 
-    setPreviewImage(cropped);
-    stopCamera();
+    const result = analyzeFrame(ctx, canvas.width, canvas.height);
+
+    setWarning(result.warning);
+    setQualityScore(result.score);
+    setIsValidFrame(result.isValid);
+
+    // AUTO CAPTURE after 2 seconds valid
+    if (result.isValid) {
+      if (!validTimerRef.current) {
+        validTimerRef.current = Date.now();
+      }
+
+      if (Date.now() - validTimerRef.current > 1200) {
+        capturePhoto();
+        validTimerRef.current = null;
+      }
+    } else {
+      validTimerRef.current = null;
+    }
   };
 
   // =========================
-  // UPLOAD
+  // CAPTURE
+  // =========================
+  const capturePhoto = () => {
+  const video = videoRef.current;
+  const canvas = canvasRef.current;
+
+  if (!video || !canvas) return;
+
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+
+  const frameWidthRatio = 0.9; // sama seperti overlay 90%
+  const targetAspect = 1.585;
+
+  const cropWidth = vw * frameWidthRatio;
+  const cropHeight = cropWidth / targetAspect;
+
+  const cropX = (vw - cropWidth) / 2;
+  const cropY = (vh - cropHeight) / 2;
+
+  canvas.width = cropWidth;
+  canvas.height = cropHeight;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  ctx.drawImage(
+    video,
+    cropX,
+    cropY,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    cropWidth,
+    cropHeight
+  );
+
+  const cropped = canvas.toDataURL("image/jpeg", 0.95);
+
+  console.log("Cropped resolution:", cropWidth, cropHeight);
+
+  setPreviewImage(cropped);
+  stopCamera();
+};
+
+  // =========================
+  // UPLOAD (ORIGINAL)
   // =========================
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError("");
+    resetAnalyzer();
     if (!e.target.files?.length) return;
 
     const reader = new FileReader();
@@ -133,38 +232,104 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
   };
 
   // =========================
-  // SEND BACKEND
+  // SEND BACKEND (ORIGINAL)
   // =========================
+  // const sendToBackend = async () => {
+  //   if (!previewImage) return;
+
+  //   setLoading(true);
+  //   setError("");
+
+  //   try {
+  //     const blob = await (await fetch(previewImage)).blob();
+  //     const formData = new FormData();
+  //     formData.append("file", blob, "document.jpg");
+
+  //     const res = await fetch(`${API_BASE_URL}/detect`, {
+  //       method: "POST",
+  //       body: formData,
+  //     });
+
+  //     const data = await res.json();
+  //     if (!res.ok) throw new Error(data.detail);
+
+  //     onExtractedData(data.parsed);
+  //   } catch (err: any) {
+  //     setError(err.message);
+  //   }
+
+  //   setLoading(false);
+  // };
+
   const sendToBackend = async () => {
-    if (!previewImage) return;
+  if (!previewImage) return;
 
-    setLoading(true);
-    setError("");
+  setLoading(true);
+  setError("");
 
-    try {
-      const blob = await (await fetch(previewImage)).blob();
-      const formData = new FormData();
-      formData.append("file", blob, "document.jpg");
+  try {
+    
+    const base64Data = previewImage.split(",")[1];
+    const byteCharacters = atob(base64Data);
+    const byteArrays = [];
 
-      const res = await fetch(`${API_BASE_URL}/detect`, {
-        method: "POST",
-        body: formData,
-      });
+    for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
+      const slice = byteCharacters.slice(offset, offset + 1024);
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail);
+      const byteNumbers = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) {
+        byteNumbers[i] = slice.charCodeAt(i);
+      }
 
-      onExtractedData(data.parsed);
-    } catch (err: any) {
-      setError(err.message);
+      byteArrays.push(new Uint8Array(byteNumbers));
     }
 
-    setLoading(false);
-  };
+    const blob = new Blob(byteArrays, { type: "image/jpeg" });
+
+    console.log("Sending blob size:", blob.size);
+
+    const formData = new FormData();
+    formData.append("file", blob, "document.jpg");
+
+    const res = await fetch(`${API_BASE_URL}/detect`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail);
+
+    onExtractedData(data.parsed);
+
+  } catch (err: any) {
+    setError(err.message);
+  }
+
+  setLoading(false);
+};
 
   const reset = () => {
+    // Stop camera if running
+    if (videoRef.current?.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach((track) => track.stop());
+    }
+
+    // Reset analyzer internal state
+    resetAnalyzer();
+
+    // Reset UI states
     setPreviewImage(null);
+    setWarning(null);
+    setQualityScore(0);
+    setIsValidFrame(false);
     setError("");
+
+    // Reset timer
+    validTimerRef.current = null;
+
+    // Ensure camera state off
+    setIsCameraOn(false);
   };
 
   return (
@@ -177,7 +342,6 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
         Scan Document
       </h2>
 
-      {/* CONTAINER DL RATIO */}
       <div className="relative w-full aspect-[1.585/1] bg-black rounded-xl overflow-hidden">
 
         {previewImage ? (
@@ -196,16 +360,28 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
               }`}
             />
 
-            {isCameraOn && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div
-                  ref={frameRef}
-                  className="relative w-[90%] aspect-[1.585/1] border-2 border-green-500 rounded-xl"
-                  style={{
-                    boxShadow: "0 0 0 9999px rgba(0,0,0,0.65)",
-                  }}
-                />
-              </div>
+            {(isCameraOn || previewImage) && (
+              <>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div
+                    ref={frameRef}
+                    className={`relative w-[90%] aspect-[1.585/1] rounded-xl ${
+                      isValidFrame
+                        ? "border-2 border-green-500"
+                        : "border-2 border-red-500"
+                    }`}
+                    style={{
+                      boxShadow: "0 0 0 9999px rgba(0,0,0,0.65)",
+                    }}
+                  />
+                </div>
+
+                {warning && (
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm animate-pulse">
+                    {warning}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -216,6 +392,26 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
           </div>
         )}
       </div>
+
+      {(isCameraOn || previewImage) && (
+        <div className="text-center">
+          <div className="text-sm font-semibold">
+            Quality Score: {qualityScore}
+          </div>
+          <div className="w-full bg-gray-200 h-2 rounded">
+            <div
+              className={`h-2 rounded ${
+                qualityScore > 75
+                  ? "bg-green-500"
+                  : qualityScore > 50
+                  ? "bg-yellow-500"
+                  : "bg-red-500"
+              }`}
+              style={{ width: `${qualityScore}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       <canvas ref={canvasRef} className="hidden" />
 
@@ -246,15 +442,6 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onExtractedData }) => {
             />
           </label>
         </div>
-      )}
-
-      {isCameraOn && !previewImage && (
-        <button
-          onClick={capturePhoto}
-          className="bg-red-500 hover:bg-red-600 text-white py-3 rounded-lg transition"
-        >
-          Capture
-        </button>
       )}
 
       {previewImage && (

@@ -118,12 +118,115 @@ YOLO-OCR/
 
 At the moment, this project still uses a hardcoded Tesseract path for local development on Windows: pytesseract.pytesseract.tesseract_cmd = "C:\\Program Files\\Tesseract-OCR\\tesseract.exe" This setup is temporary and only intended for local testing.
 
+# 📱 Project Setup (PWA + Android APK)
 
--Progressive Web App (PWA) Support
-Run Backend
-uvicorn main:app --host 0.0.0.0 --port 8000
+## Tech Stack
+- Frontend: React (Vite)
+- Backend: FastAPI (Uvicorn)
+- Mobile: Capacitor + Android Studio
+- PWA: Enabled
 
-Run Frontend
+---
+
+#  Development
+
+## 1. Run Backend
+
+```bash
+uvicorn main:app    
+```
+
+Backend:
+```
+http://localhost:8000
+```
+
+### Expose Backend (Ngrok for Mobile Access)
+
+```bash
+ngrok http 8000
+```
+
+Use the generated HTTPS URL as your API base URL:
+
+```js
+const API_URL = "https://xxxx.ngrok-free.app";
+```
+
+---
+
+## 2. Run Frontend
+
+```bash
+npm install
 npm run dev
+```
 
-Open  HTTPS URL on your mobile device
+If accessing from mobile:
+
+```bash
+npm run dev -- --host
+```
+
+---
+
+#  Build Android APK
+
+## 1. Build React
+
+```bash
+npm run build
+```
+
+Output:
+```
+dist/
+```
+
+## 2. Sync Capacitor
+
+```bash
+npx cap sync android
+```
+
+## 3. Open Android Studio
+
+```bash
+npx cap open android
+```
+
+Then build APK from Android Studio.
+
+---
+
+#  Build Flow
+
+```
+React (Vite)
+   ↓
+Build → dist/
+   ↓
+npx cap sync android
+   ↓
+Android Studio → Build APK
+   ↓
+Install APK on device
+```
+
+---
+
+#  Quick Commands
+
+### Development
+```bash
+uvicorn main:app --reload
+ngrok http 8000
+npm run dev
+```
+
+### Build APK
+```bash
+npm run build
+npx cap sync android
+npx cap open android
+```
